@@ -1,20 +1,37 @@
 [project]
-name = "akira"
+name = "akira-security"
 version = "0.1.0"
-description = "CLI framework for LLM security testing - verify your AI deployments against known attacks"
+description = "LLM security testing framework - test your AI deployments against prompt injection, jailbreaks, and more"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Akira Team" }]
-keywords = ["llm", "security", "ai", "pentesting", "vulnerability"]
+keywords = [
+    "llm",
+    "security",
+    "ai",
+    "pentesting",
+    "vulnerability",
+    "prompt-injection",
+    "jailbreak",
+    "red-team",
+    "anthropic",
+    "openai",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
-    "Topic :: Security",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
 ]
 
 dependencies = [
@@ -24,8 +41,6 @@ dependencies = [
     "pydantic>=2.0.0",
     "pyyaml>=6.0.0",
     "prompt-toolkit>=3.0.0",
-    "huggingface-hub>=0.20.0",
-    "boto3>=1.34.0",
 ]
 
 [project.optional-dependencies]
@@ -34,8 +49,23 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "ruff>=0.3.0",
     "mypy>=1.8.0",
-    "maturin>=1.4.0",
 ]
+aws = [
+    "boto3>=1.34.0",
+]
+huggingface = [
+    "huggingface-hub>=0.20.0",
+]
+all = [
+    "boto3>=1.34.0",
+    "huggingface-hub>=0.20.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/akira-security/akira"
+Documentation = "https://github.com/akira-security/akira#readme"
+Repository = "https://github.com/akira-security/akira"
+Issues = "https://github.com/akira-security/akira/issues"
 
 [project.scripts]
 akira = "akira.cli.main:main"
@@ -43,6 +73,9 @@ akira = "akira.cli.main:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["akira"]
 
 [tool.ruff]
 line-length = 100

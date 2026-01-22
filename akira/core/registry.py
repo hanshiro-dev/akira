@@ -50,27 +50,34 @@ class ModuleRegistry:
 
         package_path = Path(attacks_pkg.__file__).parent
 
+        # Load single-file attacks (attacks/<name>.py)
         for attack_file in package_path.glob("*.py"):
             if attack_file.name.startswith("_"):
                 continue
+            self._load_module(f"akira.attacks.{attack_file.stem}")
 
-            module_name = attack_file.stem
-            full_module_name = f"akira.attacks.{module_name}"
-
-            try:
-                module = importlib.import_module(full_module_name)
-                for attr_name in dir(module):
-                    attr = getattr(module, attr_name)
-                    if (
-                        isinstance(attr, type)
-                        and issubclass(attr, Module)
-                        and attr is not Module
-                    ):
-                        self.register(attr)
-            except Exception as e:
-                print(f"Warning: Failed to load attack {full_module_name}: {e}")
+        # Load folder-based attacks (attacks/<name>/attack.py)
+        for attack_dir in package_path.iterdir():
+            if not attack_dir.is_dir() or attack_dir.name.startswith("_"):
+                continue
+            if (attack_dir / "attack.py").exists():
+                self._load_module(f"akira.attacks.{attack_dir.name}.attack")
 
         self._loaded = True
+
+    def _load_module(self, full_module_name: str) -> None:
+        try:
+            module = importlib.import_module(full_module_name)
+            for attr_name in dir(module):
+                attr = getattr(module, attr_name)
+                if (
+                    isinstance(attr, type)
+                    and issubclass(attr, Module)
+                    and attr is not Module
+                ):
+                    self.register(attr)
+        except Exception as e:
+            print(f"Warning: Failed to load attack {full_module_name}: {e}")
 
     # Keep old method name for compatibility
     def load_builtin_modules(self) -> None:

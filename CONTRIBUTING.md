@@ -2,11 +2,23 @@
 
 ## Adding a New Attack
 
-1. Create `akira/attacks/<name>.py`
-2. Use the `@attack` decorator
-3. Submit a PR
+1. Create folder `akira/attacks/<name>/`
+2. Add `attack.py` with the `@attack` decorator
+3. Add `__init__.py` that exports your attack
+4. Optionally add payload files (CSV, JSON, etc.)
+5. Submit a PR
 
-### Template
+### Folder Structure
+
+```
+akira/attacks/my_attack/
+  __init__.py      # from akira.attacks.my_attack.attack import my_attack
+  attack.py        # Main attack code
+  payloads.csv     # Optional: payload data
+  README.md        # Optional: detailed documentation
+```
+
+### attack.py Template
 
 ```python
 """Brief description of what this attack does"""
@@ -27,20 +39,25 @@ async def my_attack(
     target: Target,
     option_name: Option("What this option does", default="default_value") = None,
 ):
-    """
-    Longer description if needed.
-    """
     # Your attack logic
     response = await target.send(payload)
 
-    # Return a dict with results
     return {
         "vulnerable": some_condition,
-        "confidence": 0.9,  # 0.0 to 1.0
+        "confidence": 0.9,
         "response": response,
         "payload": payload,
-        # any other details...
     }
+```
+
+### __init__.py Template
+
+```python
+"""My attack description"""
+
+from akira.attacks.my_attack.attack import my_attack
+
+__all__ = ["my_attack"]
 ```
 
 ### Categories

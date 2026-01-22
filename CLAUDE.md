@@ -17,13 +17,13 @@ Key design principles:
 ## Build Commands
 
 ```bash
-# Create virtual environment and install
+# Install from PyPI
+uv pip install akira-security
+
+# Install from source (development)
 uv venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
-
-# Build Rust extension (optional, for performance features)
-cd rust && maturin develop && cd ..
 
 # Run linter
 ruff check akira/
@@ -36,6 +36,11 @@ pytest tests/
 
 # Run single test
 pytest tests/test_module.py::test_function -v
+
+# Build and publish to PyPI
+uv pip install build twine
+python -m build
+twine upload dist/*
 ```
 
 ## Usage
@@ -123,7 +128,15 @@ High-level API: `scan()`, `scan_sync()`, `ScanResult`
 - `factory.py` - `create_target()` factory
 
 ### Attacks (`akira/attacks/`)
-One .py file per attack using the `@attack` decorator.
+Each attack is a folder containing `attack.py` and optional payload files:
+
+```
+akira/attacks/
+  magic_string/
+    __init__.py
+    attack.py       # Main attack code
+    payloads.csv    # Optional payload data
+```
 
 **Categories:**
 - `dos` - Denial of service
@@ -146,7 +159,7 @@ PyO3 extensions for performance. Gracefully falls back if not built.
 
 ## Adding New Attacks
 
-Create `akira/attacks/<name>.py`:
+Create `akira/attacks/<name>/attack.py`:
 
 ```python
 from akira import attack, Option

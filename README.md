@@ -11,10 +11,18 @@ Akira is a security testing framework for LLM-powered applications. Test your AI
 ## Installation
 
 ```bash
-uv pip install -e ".[dev]"
+# From PyPI
+uv pip install akira-security
 
-# Optional: Build Rust extension for performance features
-cd rust && maturin develop && cd ..
+# With optional dependencies
+uv pip install akira-security[aws]        # AWS Bedrock/SageMaker support
+uv pip install akira-security[huggingface] # HuggingFace support
+uv pip install akira-security[all]        # Everything
+
+# From source (for development)
+git clone https://github.com/akira-security/akira
+cd akira
+uv pip install -e ".[dev]"
 ```
 
 ## Three Ways to Run Attacks
@@ -135,7 +143,7 @@ akira scan -t https://myapp.com/chat -T api -k $KEY \
 
 ## Contributing Attacks
 
-Create `akira/attacks/<name>.py`:
+Create `akira/attacks/<name>/attack.py`:
 
 ```python
 from akira import attack, Option
@@ -156,7 +164,7 @@ async def my_attack(
     return {"vulnerable": "secret" in response, "confidence": 0.9}
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+Each attack lives in its own folder with optional payload files. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## License
 

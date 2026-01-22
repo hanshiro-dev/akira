@@ -54,6 +54,7 @@ htmlcov/
 # Akira
 .akira_history
 .akira/
+.claude/
 
 # OS
 .DS_Store
