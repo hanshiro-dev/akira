@@ -1,0 +1,47 @@
+[book]
+title = "Akira Documentation"
+authors = ["Akira Team"]
+description = "LLM Security Testing Framework - Documentation"
+language = "en"
+multilingual = false
+src = "src"
+
+[build]
+build-dir = "book"
+create-missing = true
+
+[output.html]
+default-theme = "coal"
+preferred-dark-theme = "coal"
+git-repository-url = "https://github.com/yourusername/akira"
+edit-url-template = "https://github.com/yourusername/akira/edit/main/docs/{path}"
+site-url = "/akira/"
+cname = ""
+input-404 = "404.md"
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.playground]
+editable = false
+copyable = true
+copy-js = true
+
+[output.html.search]
+enable = true
+limit-results = 30
+teaser-word-count = 30
+use-hierarchical-indices = true
+boost-title = 2
+boost-hierarchy = 1
+boost-paragraph = 1
+expand = true
+heading-split-level = 3
+
+[output.html.code]
+line-numbers = true
+
+[preprocessor.index]
+
+[preprocessor.links]

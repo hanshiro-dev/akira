@@ -27,23 +27,6 @@ def create_target(
     region: str | None = None,
     **extra: object,
 ) -> Target:
-    """Create a target instance from parameters.
-
-    Args:
-        target_type: Type of target (TargetType enum or string value)
-        endpoint: API endpoint URL
-        api_key: API key for authentication
-        model: Model identifier
-        region: AWS region (for AWS targets)
-        **extra: Additional target-specific options
-
-    Returns:
-        Configured Target instance
-
-    Example:
-        >>> target = create_target("openai", api_key="sk-...", model="gpt-4")
-        >>> target = create_target(TargetType.AWS_BEDROCK, region="us-east-1")
-    """
     if isinstance(target_type, str):
         target_type = TargetType(target_type)
 

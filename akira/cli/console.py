@@ -2,44 +2,65 @@
 
 import asyncio
 import shlex
+import sys
 from typing import Callable
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application import Application
+from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.layout import Layout, HSplit, Window, FormattedTextControl
 from prompt_toolkit.styles import Style
+from prompt_toolkit.widgets import TextArea
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
+from rich.text import Text
 
 from akira.core.session import Session
 from akira.core.registry import registry
-from akira.core.module import Module, AttackCategory
+from akira.core.module import AttackCategory, Severity
 from akira.core.target import TargetType
+from akira.core.fuzzy import fuzzy_rank, SearchResult
+from akira.core.storage import get_storage
 from akira.targets import create_target
 
 
-BANNER = r"""
-    ___    __   _
-   /   |  / /__(_)________ _
-  / /| | / //_/ / ___/ __ `/
- / ___ |/ ,< / / /  / /_/ /
-/_/  |_/_/|_/_/_/   \__,_/
+BANNER = """
+[dim]                       _,.    [/dim]
+[dim]                     o  //    [/dim]
+[dim]                    /| ./     [/dim]          [bold cyan]~====[/bold cyan][dim]────────────[/dim]
+[dim]                   /#|/  [/dim]    [bold cyan]_____[/bold cyan]   [bold cyan]_.o)[/bold cyan][dim]____[/dim][bold cyan]~~[/bold cyan][bold red]>>>[/bold red]
+[dim]                  .##/  [/dim]    [bold cyan]`───'[/bold cyan]   [dim]`──'[/dim]
+[bold red]   ###   [/bold red] [bold cyan]##  ##[/bold cyan] [bold red] ####  [/bold red] [bold cyan]#####     ###[/bold cyan]
+[bold red]  ## ##  [/bold red] [bold cyan]## ##[/bold cyan]  [bold red]  ##   [/bold red] [bold cyan]##  ##   ## ##[/bold cyan]
+[bold red] ##   ## [/bold red] [bold cyan]####[/bold cyan]   [bold red]  ##   [/bold red] [bold cyan]#####   ##   ##[/bold cyan]
+[bold red] ####### [/bold red] [bold cyan]## ##[/bold cyan]  [bold red]  ##   [/bold red] [bold cyan]##  ##  #######[/bold cyan]
+[bold red] ##   ## [/bold red] [bold cyan]##  ##[/bold cyan] [bold red] ####  [/bold red] [bold cyan]##   ## ##   ##[/bold cyan]
 
 [bold cyan]LLM Security Testing Framework[/bold cyan]
-Type 'help' for available commands
+[dim]'help' for commands | 'show modules' to list attacks[/dim]
 """
 
 
-class AkiraConsole:
-    """Interactive console for Akira - similar to msfconsole"""
 
+SEVERITY_COLORS = {
+    Severity.CRITICAL: "bold red",
+    Severity.HIGH: "red",
+    Severity.MEDIUM: "yellow",
+    Severity.LOW: "blue",
+    Severity.INFO: "dim",
+}
+
+
+class AkiraConsole:
     def __init__(self) -> None:
         self.console = Console()
         self.session = Session()
         self._running = True
 
-        # Command handlers
         self._commands: dict[str, Callable[..., None]] = {
             "help": self._cmd_help,
             "use": self._cmd_use,
@@ -49,30 +70,28 @@ class AkiraConsole:
             "setg": self._cmd_setg,
             "options": self._cmd_options,
             "run": self._cmd_run,
-            "exploit": self._cmd_run,  # Alias
+            "exploit": self._cmd_run,
             "check": self._cmd_check,
             "back": self._cmd_back,
             "search": self._cmd_search,
             "targets": self._cmd_targets,
             "target": self._cmd_target,
             "history": self._cmd_history,
+            "profile": self._cmd_profile,
+            "profiles": self._cmd_profiles,
+            "stats": self._cmd_stats,
             "exit": self._cmd_exit,
             "quit": self._cmd_exit,
         }
 
-        # Load modules
         registry.load_builtin_modules()
-
-        # Setup prompt
         self._setup_prompt()
 
     def _setup_prompt(self) -> None:
-        """Setup prompt toolkit with completions"""
         commands = list(self._commands.keys())
         modules = registry.list_all()
         target_types = [t.value for t in TargetType]
 
-        # Dynamic completions
         self._completer = WordCompleter(
             commands + modules + target_types,
             ignore_case=True,
@@ -82,26 +101,26 @@ class AkiraConsole:
             "prompt": "ansicyan bold",
         })
 
-        history_path = ".akira_history"
         self._prompt_session: PromptSession[str] = PromptSession(
-            history=FileHistory(history_path),
+            history=FileHistory(".akira_history"),
             completer=self._completer,
             style=self._style,
         )
 
     def _get_prompt(self) -> str:
-        """Generate the prompt string"""
         if self.session.module:
-            return f"akira({self.session.module.info.name}) > "
-        return "akira > "
+            return f"akira([bold magenta]{self.session.module.info.name}[/]) > "
+        return "[bold cyan]akira[/] > "
 
     def run(self) -> None:
-        """Main console loop"""
-        self.console.print(Panel(BANNER, border_style="cyan"))
+        self.console.print(Panel(BANNER, border_style="red", padding=(0, 2)))
 
         while self._running:
             try:
-                user_input = self._prompt_session.prompt(self._get_prompt())
+                prompt_text = self._get_prompt()
+                user_input = self._prompt_session.prompt(
+                    Text.from_markup(prompt_text).plain
+                )
                 if user_input.strip():
                     self._execute_command(user_input.strip())
             except KeyboardInterrupt:
@@ -110,7 +129,6 @@ class AkiraConsole:
                 break
 
     def _execute_command(self, line: str) -> None:
-        """Parse and execute a command"""
         try:
             parts = shlex.split(line)
         except ValueError:
@@ -126,34 +144,33 @@ class AkiraConsole:
             try:
                 self._commands[cmd](*args)
             except TypeError as e:
-                self.console.print(f"[red]Invalid arguments: {e}[/red]")
+                self.console.print(f"[bold red][-][/] Invalid arguments: {e}")
         else:
-            self.console.print(f"[red]Unknown command: {cmd}[/red]")
-
-    # === Command Implementations ===
+            self.console.print(f"[bold red][-][/] Unknown command: {cmd}")
 
     def _cmd_help(self, *args: str) -> None:
-        """Show help information"""
-        table = Table(title="Available Commands")
-        table.add_column("Command", style="cyan")
-        table.add_column("Description")
+        table = Table(title="[bold]Commands[/bold]", border_style="dim")
+        table.add_column("Command", style="cyan bold")
+        table.add_column("Description", style="white")
 
         help_text = [
             ("use <module>", "Select an attack module"),
-            ("info", "Show info about current module"),
-            ("show modules", "List all available modules"),
+            ("info", "Show current module details"),
+            ("show modules", "List all attack modules"),
             ("show options", "Show module options"),
-            ("search <term>", "Search for modules"),
-            ("set <option> <value>", "Set a module option"),
-            ("setg <option> <value>", "Set a global option"),
-            ("options", "Show current module options"),
-            ("target <type> <endpoint>", "Set target"),
-            ("targets", "List available target types"),
-            ("check", "Check if target is vulnerable"),
-            ("run / exploit", "Execute the attack"),
-            ("back", "Deselect current module"),
+            ("search [term]", "Fuzzy search (interactive if no term)"),
+            ("set <opt> <val>", "Set module option"),
+            ("setg <opt> <val>", "Set global option"),
+            ("target <type> <url>", "Set target endpoint"),
+            ("targets", "List target types"),
+            ("profile <action> <name>", "Save/load/delete target profiles"),
+            ("profiles", "List saved profiles"),
+            ("check", "Quick vulnerability probe"),
+            ("run", "Execute attack"),
+            ("back", "Deselect module"),
             ("history", "Show attack history"),
-            ("exit / quit", "Exit Akira"),
+            ("stats", "Show session and database stats"),
+            ("exit", "Quit"),
         ]
 
         for cmd, desc in help_text:
@@ -162,59 +179,57 @@ class AkiraConsole:
         self.console.print(table)
 
     def _cmd_use(self, module_name: str = "") -> None:
-        """Select a module to use"""
         if not module_name:
-            self.console.print("[red]Usage: use <module_name>[/red]")
+            self.console.print("[bold red][-][/] Usage: use <module_name>")
             return
 
         module_cls = registry.get(module_name)
         if not module_cls:
-            # Try partial match
             matches = registry.search(module_name)
             if len(matches) == 1:
                 module_cls = registry.get(matches[0])
                 module_name = matches[0]
             elif matches:
-                self.console.print("[yellow]Did you mean one of these?[/yellow]")
+                self.console.print("[yellow][*][/] Did you mean:")
                 for m in matches[:5]:
-                    self.console.print(f"  {m}")
+                    self.console.print(f"    [cyan]{m}[/]")
                 return
             else:
-                self.console.print(f"[red]Module not found: {module_name}[/red]")
+                self.console.print(f"[bold red][-][/] Module not found: {module_name}")
                 return
 
         if module_cls:
             self.session.module = module_cls()
-            self.console.print(f"[green]Using module: {module_name}[/green]")
+            info = self.session.module.info
+            severity_color = SEVERITY_COLORS.get(info.severity, "white")
+            self.console.print(f"[bold green][+][/] Using [bold magenta]{module_name}[/]")
+            self.console.print(f"    [dim]Severity:[/] [{severity_color}]{info.severity.value.upper()}[/]")
 
     def _cmd_info(self, *args: str) -> None:
-        """Show module information"""
         if not self.session.module:
-            self.console.print("[red]No module selected[/red]")
+            self.console.print("[bold red][-][/] No module selected")
             return
 
         info = self.session.module.info
-        self.console.print(Panel(
-            f"""[bold]{info.name}[/bold]
+        severity_color = SEVERITY_COLORS.get(info.severity, "white")
 
-[cyan]Category:[/cyan] {info.category.value}
-[cyan]Severity:[/cyan] {info.severity.value}
-[cyan]Author:[/cyan] {info.author}
+        content = f"""[bold white]{info.name}[/bold white]
 
-[cyan]Description:[/cyan]
+[cyan]Category:[/]    {info.category.value}
+[cyan]Severity:[/]    [{severity_color}]{info.severity.value.upper()}[/{severity_color}]
+[cyan]Author:[/]      {info.author}
+
+[cyan]Description:[/]
 {info.description}
 
-[cyan]References:[/cyan]
-{chr(10).join('  - ' + ref for ref in info.references) if info.references else '  None'}
+[cyan]References:[/]
+{chr(10).join('[dim]  • ' + ref + '[/dim]' for ref in info.references) if info.references else '  [dim]None[/dim]'}
 
-[cyan]Tags:[/cyan] {', '.join(info.tags) if info.tags else 'None'}
-""",
-            title="Module Info",
-            border_style="cyan",
-        ))
+[cyan]Tags:[/] [dim]{', '.join(info.tags) if info.tags else 'None'}[/dim]"""
+
+        self.console.print(Panel(content, title="[bold]Module Info[/]", border_style="cyan"))
 
     def _cmd_show(self, what: str = "") -> None:
-        """Show various information"""
         if what == "modules":
             self._show_modules()
         elif what == "options":
@@ -222,14 +237,13 @@ class AkiraConsole:
         elif what == "targets":
             self._cmd_targets()
         else:
-            self.console.print("[yellow]Usage: show [modules|options|targets][/yellow]")
+            self.console.print("[yellow][*][/] Usage: show [modules|options|targets]")
 
     def _show_modules(self, category: str | None = None) -> None:
-        """Display available modules"""
-        table = Table(title="Available Modules")
-        table.add_column("Name", style="cyan")
-        table.add_column("Severity", style="red")
-        table.add_column("Description")
+        table = Table(title="[bold]Attack Modules[/bold]", border_style="dim")
+        table.add_column("Module", style="cyan bold")
+        table.add_column("Severity", justify="center")
+        table.add_column("Description", style="white")
 
         modules = registry.list_all()
         if category:
@@ -243,93 +257,84 @@ class AkiraConsole:
             cls = registry.get(name)
             if cls:
                 mod = cls()
+                severity_color = SEVERITY_COLORS.get(mod.info.severity, "white")
                 table.add_row(
                     name,
-                    mod.info.severity.value,
-                    mod.info.description[:60],
+                    f"[{severity_color}]{mod.info.severity.value.upper()}[/{severity_color}]",
+                    mod.info.description[:55] + "..." if len(mod.info.description) > 55 else mod.info.description,
                 )
 
         self.console.print(table)
 
     def _cmd_set(self, option: str = "", *value_parts: str) -> None:
-        """Set a module option"""
         if not self.session.module:
-            self.console.print("[red]No module selected[/red]")
+            self.console.print("[bold red][-][/] No module selected")
             return
 
         if not option:
-            self.console.print("[red]Usage: set <option> <value>[/red]")
+            self.console.print("[bold red][-][/] Usage: set <option> <value>")
             return
 
         value = " ".join(value_parts)
 
-        # Handle target specially
         if option.lower() == "target":
-            self.console.print("[yellow]Use 'target <type> <endpoint>' to set target[/yellow]")
+            self.console.print("[yellow][*][/] Use 'target <type> <endpoint>' instead")
             return
 
         try:
             self.session.module.set_option(option, value)
-            self.console.print(f"[green]{option} => {value}[/green]")
+            self.console.print(f"[bold green][+][/] {option} => [cyan]{value}[/]")
         except ValueError as e:
-            self.console.print(f"[red]{e}[/red]")
+            self.console.print(f"[bold red][-][/] {e}")
 
     def _cmd_setg(self, option: str = "", *value_parts: str) -> None:
-        """Set a global option"""
         if not option:
-            self.console.print("[red]Usage: setg <option> <value>[/red]")
+            self.console.print("[bold red][-][/] Usage: setg <option> <value>")
             return
 
         value = " ".join(value_parts)
         self.session.set_global(option, value)
-        self.console.print(f"[green]Global: {option} => {value}[/green]")
+        self.console.print(f"[bold green][+][/] Global: {option} => [cyan]{value}[/]")
 
     def _cmd_options(self, *args: str) -> None:
-        """Show current module options"""
         if not self.session.module:
-            self.console.print("[red]No module selected[/red]")
+            self.console.print("[bold red][-][/] No module selected")
             return
 
-        table = Table(title="Module Options")
-        table.add_column("Name", style="cyan")
-        table.add_column("Current", style="green")
-        table.add_column("Required", style="yellow")
-        table.add_column("Description")
+        table = Table(title="[bold]Module Options[/bold]", border_style="dim")
+        table.add_column("Option", style="cyan bold")
+        table.add_column("Value", style="green")
+        table.add_column("Required", justify="center")
+        table.add_column("Description", style="white")
 
         for name, opt in self.session.module.options.items():
-            table.add_row(
-                name,
-                str(opt.get_value()) if opt.get_value() is not None else "",
-                "Yes" if opt.required else "No",
-                opt.description,
-            )
+            req_str = "[red]Yes[/]" if opt.required else "[dim]No[/]"
+            val = str(opt.get_value()) if opt.get_value() is not None else "[dim]<not set>[/]"
+            table.add_row(name, val, req_str, opt.description)
 
         self.console.print(table)
 
-        # Also show target
         if self.session.target:
-            self.console.print(f"\n[cyan]Target:[/cyan] {self.session.target}")
+            self.console.print(f"\n[cyan]Target:[/] [green]{self.session.target}[/]")
         else:
-            self.console.print("\n[yellow]Target not set. Use 'target <type> <endpoint>'[/yellow]")
+            self.console.print("\n[yellow][*][/] Target not set. Use 'target <type> <endpoint>'")
 
     def _cmd_run(self, *args: str) -> None:
-        """Execute the current attack"""
         if not self.session.module:
-            self.console.print("[red]No module selected[/red]")
+            self.console.print("[bold red][-][/] No module selected")
             return
 
         if not self.session.target:
-            self.console.print("[red]No target set. Use 'target <type> <endpoint>'[/red]")
+            self.console.print("[bold red][-][/] No target set")
             return
 
-        # Validate options
         errors = self.session.module.validate_options()
         if errors:
             for err in errors:
-                self.console.print(f"[red]{err}[/red]")
+                self.console.print(f"[bold red][-][/] {err}")
             return
 
-        self.console.print(f"[yellow]Executing {self.session.module.info.name}...[/yellow]")
+        self.console.print(f"[bold yellow][*][/] Executing [magenta]{self.session.module.info.name}[/]...")
 
         async def run_attack() -> None:
             target = self.session.target
@@ -338,11 +343,10 @@ class AkiraConsole:
             if not target or not module:
                 return
 
-            # Validate target first
             if not target.is_validated:
-                self.console.print("[cyan]Validating target...[/cyan]")
+                self.console.print("[cyan][*][/] Validating target...")
                 if not await target.validate():
-                    self.console.print("[red]Target validation failed[/red]")
+                    self.console.print("[bold red][-][/] Target validation failed")
                     return
 
             result = await module.run(target)
@@ -350,31 +354,29 @@ class AkiraConsole:
 
             if result.success:
                 self.console.print(
-                    f"\n[bold green]VULNERABLE[/bold green] "
-                    f"(confidence: {result.confidence:.0%})"
+                    f"\n[bold green][+] VULNERABLE[/] "
+                    f"[dim](confidence: {result.confidence:.0%})[/]"
                 )
                 if result.details:
-                    self.console.print("[cyan]Details:[/cyan]")
                     for k, v in result.details.items():
-                        self.console.print(f"  {k}: {v}")
+                        self.console.print(f"    [cyan]{k}:[/] {v}")
             else:
-                self.console.print("\n[blue]Target does not appear vulnerable[/blue]")
+                self.console.print("\n[bold blue][*][/] Target does not appear vulnerable")
                 if result.error:
-                    self.console.print(f"[yellow]Note: {result.error}[/yellow]")
+                    self.console.print(f"    [dim]{result.error}[/]")
 
         asyncio.run(run_attack())
 
     def _cmd_check(self, *args: str) -> None:
-        """Quick check if target might be vulnerable"""
         if not self.session.module:
-            self.console.print("[red]No module selected[/red]")
+            self.console.print("[bold red][-][/] No module selected")
             return
 
         if not self.session.target:
-            self.console.print("[red]No target set[/red]")
+            self.console.print("[bold red][-][/] No target set")
             return
 
-        self.console.print("[cyan]Checking vulnerability...[/cyan]")
+        self.console.print("[cyan][*][/] Running quick check...")
 
         async def run_check() -> None:
             target = self.session.target
@@ -385,56 +387,193 @@ class AkiraConsole:
 
             if not target.is_validated:
                 if not await target.validate():
-                    self.console.print("[red]Target validation failed[/red]")
+                    self.console.print("[bold red][-][/] Target validation failed")
                     return
 
             is_vuln = await module.check(target)
             if is_vuln:
-                self.console.print("[yellow]Target appears potentially vulnerable[/yellow]")
+                self.console.print("[bold yellow][!][/] Target appears potentially vulnerable")
             else:
-                self.console.print("[blue]Target does not appear vulnerable[/blue]")
+                self.console.print("[bold blue][*][/] Target does not appear vulnerable")
 
         asyncio.run(run_check())
 
     def _cmd_back(self, *args: str) -> None:
-        """Deselect current module"""
         if self.session.module:
-            self.console.print(f"[yellow]Deselected {self.session.module.info.name}[/yellow]")
+            self.console.print(f"[yellow][*][/] Deselected {self.session.module.info.name}")
             self.session.module = None  # type: ignore[assignment]
 
     def _cmd_search(self, *terms: str) -> None:
-        """Search for modules"""
-        if not terms:
-            self.console.print("[red]Usage: search <term>[/red]")
-            return
+        if terms:
+            # Non-interactive search with provided term
+            self._search_static(" ".join(terms))
+        else:
+            # Interactive fuzzy search
+            self._search_interactive()
 
-        query = " ".join(terms)
-        results = registry.search(query)
+    def _search_static(self, query: str) -> None:
+        """Static search with a fixed query"""
+        modules_data = self._get_modules_data()
+        results = fuzzy_rank(query, modules_data)
 
         if not results:
-            self.console.print(f"[yellow]No modules found matching '{query}'[/yellow]")
+            self.console.print(f"[yellow][*][/] No modules found matching '{query}'")
             return
 
-        table = Table(title=f"Search Results: {query}")
-        table.add_column("Name", style="cyan")
-        table.add_column("Description")
+        table = Table(title=f"[bold]Search: {query}[/bold]", border_style="dim")
+        table.add_column("Module", style="cyan bold")
+        table.add_column("Score", style="yellow", justify="right")
+        table.add_column("Description", style="white")
 
-        for name in results:
+        module_names = registry.list_all()
+        max_score = results[0][1] if results else 1.0
+        for idx, score in results[:10]:
+            name = module_names[idx]
             cls = registry.get(name)
             if cls:
                 mod = cls()
-                table.add_row(name, mod.info.description[:60])
+                normalized = (score / max_score) * 100
+                score_pct = f"{normalized:.0f}%"
+                table.add_row(name, score_pct, mod.info.description[:50])
 
         self.console.print(table)
 
+    def _get_modules_data(self) -> list[tuple[str, str, list[str]]]:
+        """Get all modules as (name, description, tags) tuples for fuzzy search"""
+        data = []
+        for name in registry.list_all():
+            cls = registry.get(name)
+            if cls:
+                mod = cls()
+                data.append((name, mod.info.description, list(mod.info.tags)))
+        return data
+
+    def _search_interactive(self) -> None:
+        """Real-time interactive fuzzy search"""
+        modules_data = self._get_modules_data()
+        module_names = registry.list_all()
+        selected_idx = 0
+        current_results: list[tuple[int, float]] = [(i, 1.0) for i in range(len(modules_data))]
+
+        kb = KeyBindings()
+
+        @kb.add("c-c")
+        @kb.add("escape")
+        def _exit(event):
+            event.app.exit(result=None)
+
+        @kb.add("enter")
+        def _select(event):
+            if current_results:
+                idx = current_results[min(selected_idx, len(current_results) - 1)][0]
+                event.app.exit(result=module_names[idx])
+
+        @kb.add("up")
+        def _up(event):
+            nonlocal selected_idx
+            selected_idx = max(0, selected_idx - 1)
+
+        @kb.add("down")
+        def _down(event):
+            nonlocal selected_idx
+            selected_idx = min(len(current_results) - 1, selected_idx + 1)
+
+        @kb.add("tab")
+        def _tab(event):
+            nonlocal selected_idx
+            selected_idx = (selected_idx + 1) % max(1, len(current_results))
+
+        def get_results_text():
+            nonlocal current_results, selected_idx
+            query = search_buffer.text
+
+            if query:
+                current_results = fuzzy_rank(query, modules_data)
+            else:
+                current_results = [(i, 1.0) for i in range(min(10, len(modules_data)))]
+
+            selected_idx = min(selected_idx, max(0, len(current_results) - 1))
+
+            lines = []
+            lines.append(("class:header", " Fuzzy Search (ESC to cancel, Enter to select)\n"))
+            lines.append(("class:header", " " + "─" * 60 + "\n"))
+
+            max_score = current_results[0][1] if current_results else 1.0
+            for display_idx, (mod_idx, score) in enumerate(current_results[:10]):
+                name = module_names[mod_idx]
+                cls = registry.get(name)
+                desc = cls().info.description[:40] if cls else ""
+                normalized = (score / max_score) * 100 if max_score > 0 else 0
+                score_str = f"{normalized:3.0f}%"
+
+                if display_idx == selected_idx:
+                    lines.append(("class:selected", f" ▶ {name:<35} {score_str}  {desc}\n"))
+                else:
+                    lines.append(("class:item", f"   {name:<35} "))
+                    lines.append(("class:score", f"{score_str}  "))
+                    lines.append(("class:desc", f"{desc}\n"))
+
+            if not current_results:
+                lines.append(("class:dim", "   No matches\n"))
+
+            return lines
+
+        search_buffer = Buffer(on_text_changed=lambda _: None)
+
+        layout = Layout(
+            HSplit([
+                Window(FormattedTextControl(get_results_text), height=13),
+                Window(height=1, char="─", style="class:separator"),
+                Window(
+                    content=FormattedTextControl(lambda: [("class:prompt", " Search: "), ("", search_buffer.text)]),
+                    height=1,
+                ),
+            ])
+        )
+
+        style = Style.from_dict({
+            "header": "bold cyan",
+            "selected": "bold reverse cyan",
+            "item": "white",
+            "score": "yellow",
+            "desc": "gray",
+            "dim": "gray italic",
+            "prompt": "bold green",
+            "separator": "gray",
+        })
+
+        app: Application[str | None] = Application(
+            layout=layout,
+            key_bindings=kb,
+            style=style,
+            full_screen=False,
+            mouse_support=True,
+        )
+
+        # Custom key handling for typing
+        @kb.add("<any>")
+        def _type_char(event):
+            char = event.data
+            if char.isprintable() and len(char) == 1:
+                search_buffer.insert_text(char)
+
+        @kb.add("backspace")
+        def _backspace(event):
+            search_buffer.delete_before_cursor(1)
+
+        result = app.run()
+
+        if result:
+            self.console.print(f"\n[bold green][+][/] Selected: [bold magenta]{result}[/]")
+            self._cmd_use(result)
+
     def _cmd_targets(self, *args: str) -> None:
-        """List available target types"""
-        table = Table(title="Target Types")
-        table.add_column("Type", style="cyan")
-        table.add_column("Description")
+        table = Table(title="[bold]Target Types[/bold]", border_style="dim")
+        table.add_column("Type", style="cyan bold")
+        table.add_column("Description", style="white")
 
         targets = [
-            ("api", "Generic LLM API endpoint"),
+            ("api", "Any LLM-powered endpoint (custom format)"),
             ("openai", "OpenAI API"),
             ("anthropic", "Anthropic Claude API"),
             ("hf", "HuggingFace local model"),
@@ -447,20 +586,35 @@ class AkiraConsole:
             table.add_row(t, desc)
 
         self.console.print(table)
-        self.console.print("\n[cyan]Usage:[/cyan] target <type> <endpoint> [--key KEY] [--model MODEL]")
+        self.console.print("""
+[bold cyan]Usage:[/] target <type> <endpoint> [options]
+
+[bold]Options:[/]
+  [cyan]--key, -k[/] KEY           API key
+  [cyan]--model, -m[/] MODEL       Model identifier
+  [cyan]--request-template[/] TPL  JSON with $payload placeholder
+  [cyan]--response-path[/] PATH    Dot-notation response path
+  [cyan]--auth-type[/] TYPE        bearer | header | query | basic
+  [cyan]--auth-header[/] NAME      Custom header name
+
+[bold]Examples:[/]
+  [dim]target openai https://api.openai.com/v1/chat/completions -k $KEY[/]
+  [dim]target api https://xyz.com/chat --request-template '{"msg": "$payload"}'[/]
+""")
 
     def _cmd_target(self, *args: str) -> None:
-        """Set the target"""
         if len(args) < 2:
-            self.console.print("[red]Usage: target <type> <endpoint> [--key KEY] [--model MODEL][/red]")
+            self.console.print("[bold red][-][/] Usage: target <type> <endpoint> [options]")
+            self.console.print("[dim]    Run 'targets' for help[/]")
             return
 
         target_type = args[0]
         endpoint = args[1]
 
-        # Parse optional args
         api_key = None
         model = None
+        extra: dict[str, object] = {}
+
         i = 2
         while i < len(args):
             if args[i] in ("--key", "-k") and i + 1 < len(args):
@@ -468,6 +622,21 @@ class AkiraConsole:
                 i += 2
             elif args[i] in ("--model", "-m") and i + 1 < len(args):
                 model = args[i + 1]
+                i += 2
+            elif args[i] == "--request-template" and i + 1 < len(args):
+                extra["request_template"] = args[i + 1]
+                i += 2
+            elif args[i] == "--response-path" and i + 1 < len(args):
+                extra["response_path"] = args[i + 1]
+                i += 2
+            elif args[i] == "--auth-type" and i + 1 < len(args):
+                extra["auth_type"] = args[i + 1]
+                i += 2
+            elif args[i] == "--auth-header" and i + 1 < len(args):
+                extra["auth_header"] = args[i + 1]
+                i += 2
+            elif args[i] == "--method" and i + 1 < len(args):
+                extra["method"] = args[i + 1]
                 i += 2
             else:
                 i += 1
@@ -478,44 +647,132 @@ class AkiraConsole:
                 endpoint=endpoint,
                 api_key=api_key,
                 model=model,
+                **extra,
             )
             self.session.target = target
-            self.console.print(f"[green]Target set: {target}[/green]")
+            self.console.print(f"[bold green][+][/] Target set: [green]{target}[/]")
+            if extra:
+                self.console.print(f"    [dim]{extra}[/]")
         except ValueError as e:
-            self.console.print(f"[red]Invalid target: {e}[/red]")
+            self.console.print(f"[bold red][-][/] Invalid target: {e}")
 
     def _cmd_history(self, *args: str) -> None:
-        """Show attack history"""
         history = self.session.history
 
         if not history:
-            self.console.print("[yellow]No attacks executed yet[/yellow]")
+            self.console.print("[yellow][*][/] No attacks executed yet")
             return
 
-        table = Table(title="Attack History")
+        table = Table(title="[bold]Attack History[/bold]", border_style="dim")
         table.add_column("Time", style="dim")
         table.add_column("Module", style="cyan")
-        table.add_column("Target")
-        table.add_column("Result", style="green")
+        table.add_column("Target", style="white")
+        table.add_column("Result", justify="center")
 
-        for log in history[-20:]:  # Last 20
-            result_str = "VULNERABLE" if log.result.success else "Not vulnerable"
-            result_style = "green" if log.result.success else "blue"
+        for log in history[-20:]:
+            if log.result.success:
+                result_str = "[bold green]VULN[/]"
+            else:
+                result_str = "[dim]safe[/]"
             table.add_row(
                 log.timestamp.strftime("%H:%M:%S"),
                 log.module_name,
                 log.target_repr[:30],
-                f"[{result_style}]{result_str}[/{result_style}]",
+                result_str,
             )
 
         self.console.print(table)
 
         stats = self.session.stats
-        self.console.print(f"\n[cyan]Total:[/cyan] {stats['total_attacks']} | "
-                          f"[green]Successful:[/green] {stats['successful_attacks']} | "
-                          f"[blue]Failed:[/blue] {stats['failed_attacks']}")
+        self.console.print(
+            f"\n[bold]Total:[/] {stats['total_attacks']} | "
+            f"[bold green]Vulnerable:[/] {stats['successful_attacks']} | "
+            f"[dim]Safe:[/] {stats['failed_attacks']}"
+        )
+
+    def _cmd_profile(self, *args: str) -> None:
+        if not args:
+            self.console.print("[bold red][-][/] Usage: profile <save|load|delete> <name>")
+            return
+
+        action = args[0].lower()
+        storage = get_storage()
+
+        if action == "save" and len(args) >= 2:
+            name = args[1]
+            if not self.session.target:
+                self.console.print("[bold red][-][/] No target configured")
+                return
+            target = self.session.target
+            target_type = target.target_type.value
+            url = getattr(target, "url", "") or getattr(target, "endpoint", "") or ""
+            config = getattr(target, "config", {}) or {}
+            storage.save_target_profile(name, target_type, str(url), config)
+            self.console.print(f"[bold green][+][/] Saved profile: [cyan]{name}[/]")
+
+        elif action == "load" and len(args) >= 2:
+            name = args[1]
+            profile = storage.get_target_profile(name)
+            if not profile:
+                self.console.print(f"[bold red][-][/] Profile not found: {name}")
+                return
+            try:
+                target = create_target(profile.target_type, profile.url, **profile.config)
+                self.session.target = target
+                self.console.print(f"[bold green][+][/] Loaded profile: [cyan]{name}[/]")
+                self.console.print(f"    [dim]Type:[/] {profile.target_type} | [dim]URL:[/] {profile.url}")
+            except Exception as e:
+                self.console.print(f"[bold red][-][/] Failed to load profile: {e}")
+
+        elif action == "delete" and len(args) >= 2:
+            name = args[1]
+            if storage.delete_target_profile(name):
+                self.console.print(f"[bold green][+][/] Deleted profile: [cyan]{name}[/]")
+            else:
+                self.console.print(f"[bold red][-][/] Profile not found: {name}")
+
+        else:
+            self.console.print("[bold red][-][/] Usage: profile <save|load|delete> <name>")
+
+    def _cmd_profiles(self, *args: str) -> None:
+        storage = get_storage()
+        profiles = storage.list_target_profiles()
+
+        if not profiles:
+            self.console.print("[yellow][*][/] No saved profiles")
+            return
+
+        table = Table(title="[bold]Saved Target Profiles[/bold]", border_style="dim")
+        table.add_column("Name", style="cyan bold")
+        table.add_column("Type", style="white")
+        table.add_column("URL", style="dim")
+        table.add_column("Created", style="dim")
+
+        for p in profiles:
+            table.add_row(p.name, p.target_type, p.url[:40], p.created_at.strftime("%Y-%m-%d"))
+
+        self.console.print(table)
+        self.console.print("\n[dim]Usage: profile load <name>[/]")
+
+    def _cmd_stats(self, *args: str) -> None:
+        storage = get_storage()
+        stats = storage.get_stats()
+
+        content = f"""[bold cyan]Session Stats[/bold cyan]
+  Attacks this session:  {self.session.stats['total_attacks']}
+  Successful this session: {self.session.stats['successful_attacks']}
+
+[bold cyan]Database Stats[/bold cyan]
+  Total history entries: {stats['history_entries']}
+  Successful attacks:    {stats['successful_attacks']}
+  Overall success rate:  {stats['success_rate']:.1f}%
+  Cached prompts:        {stats['cached_prompts']}
+  Target profiles:       {stats['target_profiles']}
+  Cached responses:      {stats['cached_responses']}
+  Database size:         {stats['db_size_kb']} KB"""
+
+        self.console.print(Panel(content, title="[bold]Akira Stats[/]", border_style="cyan"))
 
     def _cmd_exit(self, *args: str) -> None:
-        """Exit Akira"""
-        self.console.print("[yellow]Goodbye![/yellow]")
+        self.console.print("[bold yellow][*][/] Goodbye!")
         self._running = False

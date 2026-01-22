@@ -6,25 +6,25 @@ from typing import Any
 
 from akira.core.module import AttackResult, Module
 from akira.core.target import Target
+from akira.core.storage import get_storage
 
 
 @dataclass
 class AttackLog:
-    """Log entry for an attack attempt"""
     timestamp: datetime
     module_name: str
     target_repr: str
     result: AttackResult
     options: dict[str, Any]
+    db_id: int | None = None
 
 
 class Session:
-    """Manages the current Akira session state"""
-
-    def __init__(self) -> None:
+    def __init__(self, persist_history: bool = True) -> None:
         self._current_module: Module | None = None
         self._current_target: Target | None = None
         self._attack_history: list[AttackLog] = []
+        self._persist_history = persist_history
         self._global_options: dict[str, Any] = {
             "verbose": False,
             "timeout": 30,
@@ -52,14 +52,31 @@ class Session:
             self._current_module.target = value
 
     def log_attack(self, module: Module, result: AttackResult) -> None:
-        """Log an attack attempt"""
+        target = self._current_target
+        target_type = target.target_type.value if target else "unknown"
+        target_url = getattr(target, "url", "") or getattr(target, "endpoint", "") or "unknown"
+
+        db_id = None
+        if self._persist_history:
+            db_id = get_storage().save_history(
+                module=f"{module.info.category.value}/{module.info.name}",
+                target_type=target_type,
+                target_url=str(target_url),
+                success=result.success,
+                confidence=result.confidence,
+                payload=result.payload_used or "",
+                response=result.response or "",
+                details=result.details,
+            )
+
         self._attack_history.append(
             AttackLog(
                 timestamp=datetime.now(),
                 module_name=module.info.name,
-                target_repr=repr(self._current_target) if self._current_target else "unknown",
+                target_repr=repr(target) if target else "unknown",
                 result=result,
                 options={k: v.get_value() for k, v in module.options.items()},
+                db_id=db_id,
             )
         )
 
@@ -75,7 +92,6 @@ class Session:
 
     @property
     def stats(self) -> dict[str, Any]:
-        """Get session statistics"""
         successful = sum(1 for log in self._attack_history if log.result.success)
         return {
             "started_at": self._started_at.isoformat(),

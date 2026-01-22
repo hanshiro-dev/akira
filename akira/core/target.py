@@ -7,21 +7,19 @@ from typing import Any
 
 
 class TargetType(str, Enum):
-    """Types of targets Akira can attack"""
-    API_ENDPOINT = "api"           # Generic LLM API endpoint
-    OPENAI = "openai"              # OpenAI API
-    ANTHROPIC = "anthropic"        # Anthropic API
-    HUGGINGFACE_MODEL = "hf"       # HuggingFace model
-    HUGGINGFACE_INFERENCE = "hf_inference"  # HuggingFace Inference API
-    AWS_BEDROCK = "bedrock"        # AWS Bedrock
-    AWS_SAGEMAKER = "sagemaker"    # AWS SageMaker
-    AZURE_OPENAI = "azure"         # Azure OpenAI
-    LOCAL_MODEL = "local"          # Local model (Ollama, vLLM, etc.)
+    API_ENDPOINT = "api"
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    HUGGINGFACE_MODEL = "hf"
+    HUGGINGFACE_INFERENCE = "hf_inference"
+    AWS_BEDROCK = "bedrock"
+    AWS_SAGEMAKER = "sagemaker"
+    AZURE_OPENAI = "azure"
+    LOCAL_MODEL = "local"
 
 
 @dataclass
 class TargetConfig:
-    """Configuration for connecting to a target"""
     endpoint: str | None = None
     api_key: str | None = None
     model: str | None = None
@@ -30,8 +28,6 @@ class TargetConfig:
 
 
 class Target(ABC):
-    """Base class for all targets"""
-
     def __init__(self, config: TargetConfig) -> None:
         self.config = config
         self._validated = False
@@ -39,22 +35,18 @@ class Target(ABC):
     @property
     @abstractmethod
     def target_type(self) -> TargetType:
-        """Return the target type"""
         ...
 
     @abstractmethod
     async def validate(self) -> bool:
-        """Validate the target is reachable and credentials work"""
         ...
 
     @abstractmethod
     async def send(self, payload: str) -> str:
-        """Send a payload to the target and return the response"""
         ...
 
     @abstractmethod
     async def send_batch(self, payloads: list[str]) -> list[str]:
-        """Send multiple payloads (for efficiency)"""
         ...
 
     @property

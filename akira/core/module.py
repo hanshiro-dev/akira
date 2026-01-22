@@ -9,7 +9,6 @@ from akira.core.target import Target
 
 
 class Severity(str, Enum):
-    """Attack severity levels"""
     INFO = "info"
     LOW = "low"
     MEDIUM = "medium"
@@ -18,7 +17,6 @@ class Severity(str, Enum):
 
 
 class AttackCategory(str, Enum):
-    """Categories of attacks"""
     DOS = "dos"
     INJECTION = "injection"
     JAILBREAK = "jailbreak"
@@ -29,7 +27,6 @@ class AttackCategory(str, Enum):
 
 @dataclass
 class ModuleOption:
-    """Configuration option for a module"""
     name: str
     description: str
     required: bool = False
@@ -42,7 +39,6 @@ class ModuleOption:
 
 @dataclass
 class ModuleInfo:
-    """Metadata about an attack module"""
     name: str
     description: str
     author: str
@@ -55,9 +51,8 @@ class ModuleInfo:
 
 @dataclass
 class AttackResult:
-    """Result of an attack execution"""
     success: bool
-    confidence: float  # 0.0 to 1.0
+    confidence: float
     payload_used: str
     response: str
     details: dict[str, Any] = field(default_factory=dict)
@@ -69,8 +64,6 @@ class AttackResult:
 
 
 class Module(ABC):
-    """Base class for all attack modules"""
-
     def __init__(self) -> None:
         self._options: dict[str, ModuleOption] = {}
         self._target: Target | None = None
@@ -79,22 +72,19 @@ class Module(ABC):
     @property
     @abstractmethod
     def info(self) -> ModuleInfo:
-        """Return module metadata"""
         ...
 
     @abstractmethod
     def _setup_options(self) -> None:
-        """Define module options"""
         ...
 
     @abstractmethod
     async def check(self, target: Target) -> bool:
-        """Check if target is potentially vulnerable (non-destructive)"""
+        """Non-destructive vulnerability probe"""
         ...
 
     @abstractmethod
     async def run(self, target: Target) -> AttackResult:
-        """Execute the attack against the target"""
         ...
 
     def add_option(
@@ -104,7 +94,6 @@ class Module(ABC):
         required: bool = False,
         default: Any = None,
     ) -> None:
-        """Add a configurable option to the module"""
         self._options[name] = ModuleOption(
             name=name,
             description=description,
@@ -113,24 +102,20 @@ class Module(ABC):
         )
 
     def set_option(self, name: str, value: Any) -> None:
-        """Set an option value"""
         if name not in self._options:
             raise ValueError(f"Unknown option: {name}")
         self._options[name].value = value
 
     def get_option(self, name: str) -> Any:
-        """Get an option value"""
         if name not in self._options:
             raise ValueError(f"Unknown option: {name}")
         return self._options[name].get_value()
 
     @property
     def options(self) -> dict[str, ModuleOption]:
-        """Get all options"""
         return self._options
 
     def validate_options(self) -> list[str]:
-        """Validate all required options are set. Returns list of errors."""
         errors = []
         for name, opt in self._options.items():
             if opt.required and opt.get_value() is None:

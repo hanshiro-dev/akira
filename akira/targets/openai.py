@@ -9,14 +9,11 @@ from akira.core.target import Target, TargetConfig, TargetType
 
 
 class OpenAITarget(Target):
-    """Target for OpenAI API"""
-
     BASE_URL = "https://api.openai.com/v1"
 
     def __init__(self, config: TargetConfig) -> None:
         super().__init__(config)
         self._client: httpx.AsyncClient | None = None
-        # Use environment variable if no API key provided
         if not self.config.api_key:
             self.config.api_key = os.environ.get("OPENAI_API_KEY")
 
@@ -37,10 +34,8 @@ class OpenAITarget(Target):
         return self._client
 
     async def validate(self) -> bool:
-        """Validate API key by listing models"""
         if not self.config.api_key:
             return False
-
         try:
             client = await self._get_client()
             response = await client.get("/models")
@@ -50,7 +45,6 @@ class OpenAITarget(Target):
             return False
 
     async def send(self, payload: str) -> str:
-        """Send a prompt to OpenAI"""
         client = await self._get_client()
 
         data = {
@@ -59,29 +53,21 @@ class OpenAITarget(Target):
             "max_tokens": self.config.extra.get("max_tokens", 1024),
         }
 
-        # Add system prompt if configured
         if system_prompt := self.config.extra.get("system_prompt"):
             data["messages"].insert(0, {"role": "system", "content": system_prompt})
 
         response = await client.post("/chat/completions", json=data)
         response.raise_for_status()
-
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
+        return response.json()["choices"][0]["message"]["content"]
 
     async def send_batch(self, payloads: list[str]) -> list[str]:
-        """Send multiple payloads with rate limiting"""
-        results = []
-        # Simple rate limiting - 3 concurrent requests
         semaphore = asyncio.Semaphore(3)
 
         async def send_with_limit(p: str) -> str:
             async with semaphore:
                 return await self.send(p)
 
-        tasks = [send_with_limit(p) for p in payloads]
-        results = await asyncio.gather(*tasks, return_exceptions=False)
-        return list(results)
+        return list(await asyncio.gather(*[send_with_limit(p) for p in payloads]))
 
     async def close(self) -> None:
         if self._client:

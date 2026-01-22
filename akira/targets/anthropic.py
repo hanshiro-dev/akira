@@ -9,8 +9,6 @@ from akira.core.target import Target, TargetConfig, TargetType
 
 
 class AnthropicTarget(Target):
-    """Target for Anthropic Claude API"""
-
     BASE_URL = "https://api.anthropic.com/v1"
 
     def __init__(self, config: TargetConfig) -> None:
@@ -37,12 +35,9 @@ class AnthropicTarget(Target):
         return self._client
 
     async def validate(self) -> bool:
-        """Validate API key with a minimal request"""
         if not self.config.api_key:
             return False
-
         try:
-            # Send a minimal message to validate
             client = await self._get_client()
             response = await client.post(
                 "/messages",
@@ -58,7 +53,6 @@ class AnthropicTarget(Target):
             return False
 
     async def send(self, payload: str) -> str:
-        """Send a prompt to Claude"""
         client = await self._get_client()
 
         data = {
@@ -67,32 +61,25 @@ class AnthropicTarget(Target):
             "messages": [{"role": "user", "content": payload}],
         }
 
-        # Add system prompt if configured
         if system_prompt := self.config.extra.get("system_prompt"):
             data["system"] = system_prompt
 
         response = await client.post("/messages", json=data)
         response.raise_for_status()
 
-        result = response.json()
-        # Anthropic returns content as a list
-        content = result.get("content", [])
-        if content and isinstance(content, list):
-            return content[0].get("text", "")
-        return ""
+        content = response.json().get("content", [])
+        return content[0].get("text", "") if content else ""
 
     async def send_batch(self, payloads: list[str]) -> list[str]:
-        """Send multiple payloads with rate limiting"""
-        semaphore = asyncio.Semaphore(2)  # Anthropic has stricter rate limits
+        semaphore = asyncio.Semaphore(2)
 
         async def send_with_limit(p: str) -> str:
             async with semaphore:
                 result = await self.send(p)
-                await asyncio.sleep(0.5)  # Small delay between requests
+                await asyncio.sleep(0.5)
                 return result
 
-        tasks = [send_with_limit(p) for p in payloads]
-        return list(await asyncio.gather(*tasks, return_exceptions=False))
+        return list(await asyncio.gather(*[send_with_limit(p) for p in payloads]))
 
     async def close(self) -> None:
         if self._client:
