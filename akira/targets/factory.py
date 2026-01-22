@@ -1,12 +1,11 @@
 """Factory for creating target instances"""
 
 from akira.core.target import Target, TargetConfig, TargetType
-from akira.targets.api import GenericAPITarget
-from akira.targets.openai import OpenAITarget
 from akira.targets.anthropic import AnthropicTarget
-from akira.targets.huggingface import HuggingFaceModelTarget, HuggingFaceInferenceTarget
+from akira.targets.api import GenericAPITarget
 from akira.targets.aws import BedrockTarget, SageMakerTarget
-
+from akira.targets.huggingface import HuggingFaceInferenceTarget, HuggingFaceModelTarget
+from akira.targets.openai import OpenAITarget
 
 TARGET_MAP: dict[TargetType, type[Target]] = {
     TargetType.API_ENDPOINT: GenericAPITarget,

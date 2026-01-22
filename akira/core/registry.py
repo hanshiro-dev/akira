@@ -2,21 +2,20 @@
 
 import importlib
 from pathlib import Path
-from typing import Type
 
 from akira.core.module import AttackCategory, Module
 
 
 class ModuleRegistry:
     def __init__(self) -> None:
-        self._modules: dict[str, Type[Module]] = {}
+        self._modules: dict[str, type[Module]] = {}
         self._loaded = False
 
-    def register(self, module_class: Type[Module]) -> None:
+    def register(self, module_class: type[Module]) -> None:
         instance = module_class()
         self._modules[instance.info.name] = module_class
 
-    def get(self, name: str) -> Type[Module] | None:
+    def get(self, name: str) -> type[Module] | None:
         return self._modules.get(name)
 
     def list_all(self) -> list[str]:

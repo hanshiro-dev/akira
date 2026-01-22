@@ -48,11 +48,12 @@ def run(
         akira run dos/magic_string -t https://api.example.com -T openai
     """
     import asyncio
+
     from rich.console import Console
 
     from akira.core.registry import registry
-    from akira.targets import create_target
     from akira.core.target import TargetType
+    from akira.targets import create_target
 
     console = Console()
 
@@ -116,8 +117,8 @@ def list_modules(category: str | None) -> None:
     from rich.console import Console
     from rich.table import Table
 
-    from akira.core.registry import registry
     from akira.core.module import AttackCategory
+    from akira.core.registry import registry
 
     console = Console()
     registry.load_builtin_modules()
@@ -145,26 +146,11 @@ def list_modules(category: str | None) -> None:
                 name,
                 mod.info.category.value,
                 mod.info.severity.value,
-                mod.info.description[:50] + "..." if len(mod.info.description) > 50 else mod.info.description,
+                (mod.info.description[:50] + "...") if len(mod.info.description) > 50
+                else mod.info.description,
             )
 
     console.print(table)
-
-
-@main.command()
-def update() -> None:
-    """Update attack repository from remote."""
-    from rich.console import Console
-    from akira.repository.manager import RepoManager
-
-    console = Console()
-    manager = RepoManager()
-
-    console.print("[yellow]Updating attack repository...[/yellow]")
-    if manager.update():
-        console.print("[green]Repository updated successfully[/green]")
-    else:
-        console.print("[red]Update failed[/red]")
 
 
 if __name__ == "__main__":

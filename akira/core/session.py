@@ -1,12 +1,12 @@
 """Session management for Akira"""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 from akira.core.module import AttackResult, Module
-from akira.core.target import Target
 from akira.core.storage import get_storage
+from akira.core.target import Target
 
 
 @dataclass

@@ -9,7 +9,7 @@ Akira is a Python-based CLI framework for LLM security testing, inspired by Meta
 Key design principles:
 - Metasploit-style interactive console with commands like `use`, `set`, `run`, `show modules`
 - Support for any LLM-powered endpoint (not just direct API providers)
-- Attack repository similar to exploitdb
+- Simple decorator-based API for contributing attacks
 - Rust components for performance-critical operations
 - Minimal comments, clean code, colored CLI output
 
@@ -45,13 +45,10 @@ pytest tests/test_module.py::test_specific_function -v
 akira
 
 # Run specific module directly
-akira run dos/magic_string -t https://api.example.com -T openai -k $API_KEY
+akira run magic_string -t https://api.anthropic.com/v1 -T anthropic -k $ANTHROPIC_API_KEY
 
 # List available modules
 akira list
-
-# Update attack repository
-akira update
 ```
 
 ### Console Commands
@@ -76,12 +73,12 @@ akira update
 ## Architecture
 
 ### Core (`akira/core/`)
-- `module.py` - Base `Module` class with `check()` and `run()` methods, `AttackCategory` enum (DOS, INJECTION, JAILBREAK, EXTRACTION, EVASION, POISONING), `Severity` enum, `ModuleInfo` and `AttackResult` dataclasses
+- `decorator.py` - `@attack` decorator and `Option` class for defining attacks
+- `module.py` - Base `Module` class, `AttackCategory` enum, `Severity` enum, `AttackResult` dataclass
 - `target.py` - Base `Target` class for LLM platforms
-- `session.py` - Session state and attack history (auto-persists to storage)
-- `registry.py` - Module discovery and registration
-- `fuzzy.py` - Fuzzy string matching for module search (Python fallback for Rust)
-- `storage.py` - SQLite storage for history, prompts, target profiles, and response cache
+- `registry.py` - Module discovery and auto-registration
+- `session.py` - Session state and attack history
+- `storage.py` - SQLite storage for history and target profiles
 
 ### Targets (`akira/targets/`)
 Implementations for different LLM platforms:
@@ -118,9 +115,6 @@ Check for Rust availability with `HAS_RUST` flag in modules.
 - `console.py` - Interactive msfconsole-style interface with Rich formatting
 - `main.py` - Click-based CLI entry points
 
-### Repository (`akira/repository/`)
-Attack definition management (YAML-based, git-backed).
-
 ### Storage (`akira/core/storage.py`)
 SQLite-based persistent storage in `~/.akira/akira.db`:
 
@@ -155,40 +149,42 @@ storage.cache_response(request_data, response, ttl_seconds=3600)
 
 ## Adding New Attack Modules
 
-1. Create file: `akira/attacks/<name>.py` (flat structure, category is defined in code)
-2. Subclass `Module` and implement:
-   - `info` property returning `ModuleInfo`
-   - `_setup_options()` for configurable options
-   - `check(target)` for quick vulnerability probe
-   - `run(target)` for full attack execution
-3. Module auto-registers on import via `registry.load_builtin_attacks()`
+Create `akira/attacks/<name>.py` using the `@attack` decorator:
 
-Example structure:
 ```python
-class MyAttack(Module):
-    @property
-    def info(self) -> ModuleInfo:
-        return ModuleInfo(
-            name="my_attack",
-            description="Description here",
-            author="Author",
-            category=AttackCategory.INJECTION,
-            severity=Severity.HIGH,
-            references=["https://..."],
-            tags=["tag1", "tag2"],
-        )
+from akira import attack, Option
+from akira.core.target import Target
 
-    def _setup_options(self) -> None:
-        self.add_option("option_name", "description", default="value")
+@attack(
+    name="my_attack",
+    description="What this attack does",
+    category="injection",  # dos|injection|jailbreak|extraction|evasion|poisoning
+    severity="high",       # info|low|medium|high|critical
+    author="your_name",
+    references=["https://..."],
+    tags=["tag1", "tag2"],
+)
+async def my_attack(
+    target: Target,
+    payload: Option("The payload to inject", default="test") = None,
+    iterations: Option("Number of attempts", default=1) = None,
+):
+    response = await target.send(payload)
 
-    async def check(self, target: Target) -> bool:
-        # Quick probe, return True if potentially vulnerable
-        pass
-
-    async def run(self, target: Target) -> AttackResult:
-        # Full attack execution
-        pass
+    # Return bool, dict, or AttackResult
+    return {
+        "vulnerable": "secret" in response,
+        "confidence": 0.9,
+        "response": response,
+    }
 ```
+
+**Return values:**
+- `bool` - True = vulnerable, False = not vulnerable
+- `dict` - `{"vulnerable": bool, "confidence": float, "response": str, ...}`
+- `AttackResult` - Full control
+
+Module auto-registers on import. See `akira/attacks/magic_string.py` for a complete example.
 
 ## Adding New Targets
 

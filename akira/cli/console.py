@@ -2,8 +2,7 @@
 
 import asyncio
 import shlex
-import sys
-from typing import Callable
+from collections.abc import Callable
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application import Application
@@ -11,22 +10,20 @@ from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
-from prompt_toolkit.layout import Layout, HSplit, Window, FormattedTextControl
+from prompt_toolkit.layout import FormattedTextControl, HSplit, Layout, Window
 from prompt_toolkit.styles import Style
-from prompt_toolkit.widgets import TextArea
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
-from akira.core.session import Session
-from akira.core.registry import registry
+from akira.core.fuzzy import fuzzy_rank
 from akira.core.module import AttackCategory, Severity
-from akira.core.target import TargetType
-from akira.core.fuzzy import fuzzy_rank, SearchResult
+from akira.core.registry import registry
+from akira.core.session import Session
 from akira.core.storage import get_storage
+from akira.core.target import TargetType
 from akira.targets import create_target
-
 
 BANNER = """
 [dim]                       _,.    [/dim]
