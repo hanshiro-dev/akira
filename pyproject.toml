@@ -1,11 +1,11 @@
 [project]
 name = "akira-security"
 version = "0.1.0"
-description = "LLM security testing framework - test your AI deployments against prompt injection, jailbreaks, and more"
+description = "Test your AI deployments against security vulnerabilities."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Akira Team" }]
+authors = [{ name = "Sarthak Munshi <s@hanshiro.dev>" }]
 keywords = [
     "llm",
     "security",

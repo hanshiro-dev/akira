@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/logo.png" alt="Akira Logo" width="800"/>
+  <img src="https://raw.githubusercontent.com/hanshiro-dev/akira/refs/heads/master/docs/logo.png" alt="Akira Logo" width="800"/>
 
   **LLM Security Testing Framework**
 
