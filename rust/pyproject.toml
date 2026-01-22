@@ -1,0 +1,14 @@
+[project]
+name = "akira-core"
+version = "0.1.0"
+description = "High-performance Rust core for Akira LLM security framework"
+requires-python = ">=3.11"
+
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "akira_core"
