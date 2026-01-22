@@ -8,15 +8,16 @@ Akira is a Python-based CLI framework for LLM security testing, inspired by Meta
 
 Key design principles:
 - Metasploit-style interactive console with commands like `use`, `set`, `run`, `show modules`
-- Support for any LLM-powered endpoint (not just direct API providers)
+- Library-first API for CI/CD integration and scripting
 - Simple decorator-based API for contributing attacks
-- Rust components for performance-critical operations
+- Support for any LLM-powered endpoint (not just direct API providers)
+- Rust components for performance-critical operations (optional)
 - Minimal comments, clean code, colored CLI output
 
 ## Build Commands
 
 ```bash
-# Create virtual environment and install (use uv, not pip)
+# Create virtual environment and install
 uv venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
@@ -33,21 +34,56 @@ mypy akira/
 # Run tests
 pytest tests/
 
-# Run single test file or test function
-pytest tests/test_module.py
-pytest tests/test_module.py::test_specific_function -v
+# Run single test
+pytest tests/test_module.py::test_function -v
 ```
 
-## Running Akira
+## Usage
+
+### Library API (Recommended for CI/CD)
+
+```python
+from akira import scan, create_target
+
+target = create_target("anthropic", api_key="...", model="claude-sonnet-4-20250514")
+
+# Scan with all attacks
+result = await scan(target)
+
+# Scan specific category
+result = await scan(target, category="dos")
+
+# Scan specific attacks
+result = await scan(target, attacks=["magic_string", "prompt_leak"])
+
+print(f"Found {result.vulnerable}/{result.total} vulnerabilities")
+```
+
+### CLI
 
 ```bash
-# Interactive console (msfconsole-style)
+# Interactive console
 akira
 
-# Run specific module directly
-akira run magic_string -t https://api.anthropic.com/v1 -T anthropic -k $ANTHROPIC_API_KEY
+# Scan target with all attacks
+akira scan -t https://api.anthropic.com/v1 -T anthropic -k $KEY --all
 
-# List available modules
+# Scan specific category, output JSON
+akira scan -t $URL -T anthropic --category dos --json
+
+# Quiet mode for scripting
+akira scan -t $URL -T api --all --quiet -o results.json
+
+# Run single attack
+akira run magic_string -t $URL -T anthropic -k $KEY
+
+# Fingerprint target
+akira fingerprint -t $URL -T api -k $KEY
+
+# Generate report from scan results
+akira report results.json -o report.html
+
+# List available attacks
 akira list
 ```
 
@@ -59,97 +95,58 @@ akira list
 | `info` | Show current module details |
 | `show modules` | List all attack modules |
 | `show options` | Show module options |
-| `search [term]` | Fuzzy search (interactive if no term) |
+| `search [term]` | Fuzzy search modules |
 | `set <opt> <val>` | Set module option |
 | `target <type> <url>` | Set target endpoint |
-| `profile <action> <name>` | Save/load/delete target profiles |
-| `profiles` | List saved target profiles |
 | `check` | Quick vulnerability probe |
 | `run` | Execute attack |
 | `back` | Deselect module |
-| `history` | Show attack history |
-| `stats` | Show session and database stats |
 
 ## Architecture
 
 ### Core (`akira/core/`)
 - `decorator.py` - `@attack` decorator and `Option` class for defining attacks
-- `module.py` - Base `Module` class, `AttackCategory` enum, `Severity` enum, `AttackResult` dataclass
+- `module.py` - Base `Module` class, `AttackCategory` enum, `Severity` enum, `AttackResult`
 - `target.py` - Base `Target` class for LLM platforms
 - `registry.py` - Module discovery and auto-registration
 - `session.py` - Session state and attack history
-- `storage.py` - SQLite storage for history and target profiles
+- `storage.py` - SQLite storage for history and profiles
+
+### Scanning (`akira/scan.py`)
+High-level API: `scan()`, `scan_sync()`, `ScanResult`
 
 ### Targets (`akira/targets/`)
-Implementations for different LLM platforms:
-- `api.py` - **Generic API target** for any LLM-powered endpoint with flexible request/response templates
-- `openai.py`, `anthropic.py` - Provider-specific APIs
-- `huggingface.py` - HuggingFace Inference API and local models
-- `aws.py` - AWS Bedrock and SageMaker
-- `factory.py` - `create_target()` factory function
-
-**Important:** The `api` target supports arbitrary LLM-powered endpoints (e.g., `xyz.com/predict` using Claude behind the scenes) via:
-- `--request-template` - Custom JSON request format with `$payload` placeholder
-- `--response-path` - JSON path to extract response (e.g., `data.output.text`)
-- `--auth-type` - Authentication method (`bearer`, `header`, `query`, `basic`)
+- `anthropic.py`, `openai.py` - Provider-specific APIs
+- `api.py` - Generic API target for any LLM endpoint
+- `huggingface.py` - HuggingFace Inference API
+- `aws.py` - Bedrock and SageMaker
+- `factory.py` - `create_target()` factory
 
 ### Attacks (`akira/attacks/`)
-Attack modules in a flat structure (one .py file per attack). Categories defined in code:
-- `dos` - Denial of service (e.g., Claude magic string attacks)
-- `injection` - Prompt injection attacks
-- `extraction` - System prompt and data extraction
-- `jailbreak` - Safety bypass attempts (DAN-style)
-- `evasion` - Detection evasion techniques
-- `poisoning` - Training data poisoning attacks
+One .py file per attack using the `@attack` decorator.
 
-### Rust Core (`rust/`)
-Performance-critical operations via PyO3 (optional, graceful fallback if not built):
-- `fuzzer.rs` - Payload mutation and fuzzing
-- `matcher.rs` - Fast multi-pattern matching (Aho-Corasick)
-- `analyzer.rs` - Parallel response analysis
-- `fuzzy.rs` - Fuzzy string matching for module search
-
-Check for Rust availability with `HAS_RUST` flag in modules.
+**Categories:**
+- `dos` - Denial of service
+- `injection` - Prompt injection
+- `jailbreak` - Safety bypass
+- `extraction` - Data/prompt extraction
+- `evasion` - Detection evasion
+- `poisoning` - Training data poisoning
+- `multiturn` - Multi-turn attacks
+- `tool_abuse` - Function calling exploits
+- `rag_poison` - RAG retrieval poisoning
+- `agent_hijack` - Agentic workflow hijacking
 
 ### CLI (`akira/cli/`)
-- `console.py` - Interactive msfconsole-style interface with Rich formatting
-- `main.py` - Click-based CLI entry points
+- `console.py` - Interactive msfconsole-style interface
+- `main.py` - Click-based CLI commands
 
-### Storage (`akira/core/storage.py`)
-SQLite-based persistent storage in `~/.akira/akira.db`:
+### Rust (`rust/`) - Optional
+PyO3 extensions for performance. Gracefully falls back if not built.
 
-```
-~/.akira/
-└── akira.db          # SQLite database
-```
+## Adding New Attacks
 
-**Tables:**
-- `attack_history` - Persisted attack results (timestamp, module, target, success, payload, response)
-- `prompt_cache` - Cached prompts by key
-- `target_profiles` - Saved target configurations for reuse
-- `response_cache` - Cached API responses with TTL
-
-**Usage:**
-```python
-from akira.core.storage import get_storage
-
-storage = get_storage()
-storage.save_history(module, target_type, url, success, confidence, payload, response)
-storage.save_target_profile("prod-api", "openai", "https://...", {"model": "gpt-4"})
-storage.cache_response(request_data, response, ttl_seconds=3600)
-```
-
-## CLI Styling Conventions
-
-- Use Rich library for terminal colors and tables
-- Status prefixes: `[+]` success (green), `[-]` error (red), `[*]` info (yellow/blue), `[!]` warning
-- Severity colors: CRITICAL=bold red, HIGH=red, MEDIUM=yellow, LOW=blue, INFO=dim
-- Banner uses cyberpunk aesthetic (red/cyan) inspired by `docs/logo.png`
-- Avoid emojis unless user explicitly requests them
-
-## Adding New Attack Modules
-
-Create `akira/attacks/<name>.py` using the `@attack` decorator:
+Create `akira/attacks/<name>.py`:
 
 ```python
 from akira import attack, Option
@@ -158,53 +155,42 @@ from akira.core.target import Target
 @attack(
     name="my_attack",
     description="What this attack does",
-    category="injection",  # dos|injection|jailbreak|extraction|evasion|poisoning
-    severity="high",       # info|low|medium|high|critical
+    category="injection",
+    severity="high",
     author="your_name",
     references=["https://..."],
-    tags=["tag1", "tag2"],
+    tags=["tag1"],
 )
 async def my_attack(
     target: Target,
-    payload: Option("The payload to inject", default="test") = None,
-    iterations: Option("Number of attempts", default=1) = None,
+    payload: Option("The payload to use", default="test") = None,
 ):
     response = await target.send(payload)
-
-    # Return bool, dict, or AttackResult
     return {
-        "vulnerable": "secret" in response,
+        "vulnerable": "leaked" in response,
         "confidence": 0.9,
         "response": response,
     }
 ```
 
-**Return values:**
-- `bool` - True = vulnerable, False = not vulnerable
-- `dict` - `{"vulnerable": bool, "confidence": float, "response": str, ...}`
-- `AttackResult` - Full control
-
-Module auto-registers on import. See `akira/attacks/magic_string.py` for a complete example.
+See `CONTRIBUTING.md` for full guidelines.
 
 ## Adding New Targets
 
-1. Create file in `akira/targets/<name>.py`
-2. Subclass `Target` and implement:
-   - `target_type` property
-   - `validate()` for connection/auth testing
-   - `send(payload)` and `send_batch(payloads)`
-3. Register in `akira/targets/factory.py` TARGET_MAP
+1. Create `akira/targets/<name>.py`
+2. Subclass `Target`, implement `validate()`, `send()`, `send_batch()`
+3. Add to `akira/targets/factory.py` TARGET_MAP
+
+## CLI Styling
+
+- Rich library for colors/tables
+- Prefixes: `[+]` success (green), `[-]` error (red), `[*]` info (yellow), `[!]` warning
+- Severity colors: CRITICAL=bold red, HIGH=red, MEDIUM=yellow, LOW=blue, INFO=dim
 
 ## Code Style
 
-- Minimal comments - only where logic isn't self-evident
-- Use type hints throughout
-- Prefer async/await for I/O operations
-- Use `HAS_RUST` pattern for optional Rust acceleration:
-  ```python
-  try:
-      import akira_core
-      HAS_RUST = True
-  except ImportError:
-      HAS_RUST = False
-  ```
+- Minimal comments
+- Type hints throughout
+- Async/await for I/O
+- `ruff` for linting
+- `mypy` for type checking

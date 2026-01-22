@@ -23,6 +23,10 @@ class AttackCategory(str, Enum):
     EXTRACTION = "extraction"
     EVASION = "evasion"
     POISONING = "poisoning"
+    MULTITURN = "multiturn"
+    TOOL_ABUSE = "tool_abuse"
+    RAG_POISON = "rag_poison"
+    AGENT_HIJACK = "agent_hijack"
 
 
 @dataclass

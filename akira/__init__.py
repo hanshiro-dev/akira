@@ -2,6 +2,16 @@
 
 from akira.core.decorator import Option, attack
 from akira.core.module import AttackResult
+from akira.scan import ScanResult, scan, scan_sync
+from akira.targets import create_target
 
 __version__ = "0.1.0"
-__all__ = ["attack", "Option", "AttackResult"]
+__all__ = [
+    "attack",
+    "Option",
+    "AttackResult",
+    "scan",
+    "scan_sync",
+    "ScanResult",
+    "create_target",
+]
