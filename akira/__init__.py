@@ -5,7 +5,7 @@ from akira.core.module import AttackResult
 from akira.scan import ScanResult, scan, scan_sync
 from akira.targets import create_target
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = [
     "attack",
     "Option",

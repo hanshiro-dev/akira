@@ -1,6 +1,6 @@
 [project]
 name = "akira-security"
-version = "0.1.0"
+version = "0.1.1"
 description = "Test your AI deployments against security vulnerabilities."
 readme = "README.md"
 requires-python = ">=3.11"
