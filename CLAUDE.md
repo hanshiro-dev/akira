@@ -32,6 +32,10 @@ mypy akira/
 
 # Run tests
 pytest tests/
+
+# Run single test file or test function
+pytest tests/test_module.py
+pytest tests/test_module.py::test_specific_function -v
 ```
 
 ## Running Akira
@@ -72,7 +76,7 @@ akira update
 ## Architecture
 
 ### Core (`akira/core/`)
-- `module.py` - Base `Module` class with `check()` and `run()` methods, `AttackCategory` and `Severity` enums
+- `module.py` - Base `Module` class with `check()` and `run()` methods, `AttackCategory` enum (DOS, INJECTION, JAILBREAK, EXTRACTION, EVASION, POISONING), `Severity` enum, `ModuleInfo` and `AttackResult` dataclasses
 - `target.py` - Base `Target` class for LLM platforms
 - `session.py` - Session state and attack history (auto-persists to storage)
 - `registry.py` - Module discovery and registration
@@ -88,16 +92,18 @@ Implementations for different LLM platforms:
 - `factory.py` - `create_target()` factory function
 
 **Important:** The `api` target supports arbitrary LLM-powered endpoints (e.g., `xyz.com/predict` using Claude behind the scenes) via:
-- `--request-template` - Custom JSON request format with `{prompt}` placeholder
+- `--request-template` - Custom JSON request format with `$payload` placeholder
 - `--response-path` - JSON path to extract response (e.g., `data.output.text`)
-- `--auth-type` - Authentication method (`bearer`, `api-key`, `basic`, `none`)
+- `--auth-type` - Authentication method (`bearer`, `header`, `query`, `basic`)
 
-### Modules (`akira/modules/`)
-Attack modules organized by category:
-- `dos/` - Denial of service (e.g., Claude magic string attacks)
-- `injection/` - Prompt injection attacks
-- `extraction/` - System prompt and data extraction
-- `jailbreak/` - Safety bypass attempts (DAN-style)
+### Attacks (`akira/attacks/`)
+Attack modules in a flat structure (one .py file per attack). Categories defined in code:
+- `dos` - Denial of service (e.g., Claude magic string attacks)
+- `injection` - Prompt injection attacks
+- `extraction` - System prompt and data extraction
+- `jailbreak` - Safety bypass attempts (DAN-style)
+- `evasion` - Detection evasion techniques
+- `poisoning` - Training data poisoning attacks
 
 ### Rust Core (`rust/`)
 Performance-critical operations via PyO3 (optional, graceful fallback if not built):
@@ -149,13 +155,13 @@ storage.cache_response(request_data, response, ttl_seconds=3600)
 
 ## Adding New Attack Modules
 
-1. Create file in appropriate category: `akira/modules/<category>/<name>.py`
+1. Create file: `akira/attacks/<name>.py` (flat structure, category is defined in code)
 2. Subclass `Module` and implement:
    - `info` property returning `ModuleInfo`
    - `_setup_options()` for configurable options
    - `check(target)` for quick vulnerability probe
    - `run(target)` for full attack execution
-3. Module auto-registers on import via `registry.load_builtin_modules()`
+3. Module auto-registers on import via `registry.load_builtin_attacks()`
 
 Example structure:
 ```python
