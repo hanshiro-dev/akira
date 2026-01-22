@@ -1,21 +1,21 @@
 <div align="center">
   <img src="docs/logo.png" alt="Akira Logo" width="800"/>
   
-  **Verify your AI deployments against known attacks.**
+  **Verify your AI deployments against known attacks**
   
   [![Build Status](https://github.com/hanshiro-dev/hanshirodb/workflows/CI/badge.svg)](https://github.com/hanshiro-dev/hanshirodb/actions)
   [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 </div>
 
 
-Akira is a Metasploit-style CLI tool for testing LLM security. It provides an interactive console and attack modules for testing prompt injection, jailbreaks, data extraction, and denial-of-service vulnerabilities.
+Akira is a CLI tool for testing LLM and AI Infrastructure Security. It provides an interactive console and attack modules for testing prompt injection, jailbreaks, data extraction, and denial-of-service vulnerabilities.
 
 ## Features
 
 - **Interactive Console** - msfconsole-style interface with tab completion
 - **Multiple Targets** - OpenAI, Anthropic, HuggingFace, AWS Bedrock/SageMaker, custom APIs
 - **Attack Modules** - Prompt injection, jailbreaks, system prompt extraction, DoS
-- **Attack Repository** - Pull attacks from remote git repositories (like exploitdb)
+- **Attack Repository** - Pull attacks from remote git repositories
 - **High Performance** - Rust-powered payload fuzzing and response analysis
 
 ## Quick Start
@@ -66,12 +66,6 @@ akira(basic_injection) > run
 - `sagemaker` - AWS SageMaker
 - `api` - Generic REST endpoint
 
-## Attack Categories
-
-- **dos** - Denial of service attacks
-- **injection** - Prompt injection
-- **extraction** - System prompt/data extraction
-- **jailbreak** - Safety bypass attempts
 
 ## License
 
